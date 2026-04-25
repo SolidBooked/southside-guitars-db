@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+config.local.py
+*.csv
+*.xlsx
+*.xls
+*.mdf
+*.ldf
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
