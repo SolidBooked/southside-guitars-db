@@ -186,13 +186,17 @@ One row per receipt line item — includes pre-calculated GST:
 ## 25/04/2026 — Discovery: Lookup Tables and System Config
 
 ### RefType values across payment/receipt tables [V]
-| RefType | tblPayments | tblReceiptInfo | Likely meaning |
-|---------|-------------|----------------|----------------|
-| S | 31,672 | 55,662 | Sale (tblSale) |
-| X | 1,068 | 1,299 | Unknown — TBD |
-| L | 238 | 236 | Layby? or Loan? — TBD |
+| RefType | tblPayments | tblReceiptInfo | Meaning | Links to |
+|---------|-------------|----------------|---------|----------|
+| S | 31,672 | 55,662 | Sale | tblSale.SaleNo |
+| X | 1,068 | 1,299 | Refund payout | tblRefund.RefNo |
+| L | 238 | 236 | Pawnbroker loan payment | tblTran where RefType='L' |
 
-Note: No `T` (Tran) type in payments/receipts — tblTran payments may flow through a different mechanism.
+**RefType='X' confirmed [V]:** X-prefixed RefNos (e.g. X26A9) exist in tblRefund.RefNo. tblPayments with RefType='X' records the payment method used to pay out a refund to the customer. tblRefund.Amount matches tblPayments.Amount. tblRefundItem.SaleNo links back to the original sale being refunded.
+
+**RefType='L' confirmed [V]:** L-prefixed RefNos (e.g. L21000013, L114) exist in tblTran where RefType='L'. tblTran.RefType has three codes: B (4,211 = Buy from public), L (301 = Loan/Pawn), C (21 = Consignment). RefType='L' payments are loan/pawn redemption payments.
+
+Note: tblTran.RefType='B' (Buy transactions) do NOT have corresponding tblPayments records — cash payouts to sellers are tracked via tblCashMove ('Retail → Buys/Loans'), not tblPayments.
 
 ### tblCashMove — Daily Cash Movement Types [V]
 Till cash flow vocabulary (FromType → ToType, count):
@@ -236,5 +240,68 @@ Not related to tblPayments.PayType integer codes.
 Pawnbroker compliance codes including: Redeemed, Seized By Police, 21/56 Day Stop Dealing Notice,
 SOLD Second Hand Goods, SOLD Forfeited Goods, Defaulted, Bankrupt, Repaid, Auction, EBay Auction.
 System vendor: **ComWiz / ProCreate HQ**.
+
+---
+
+## 25/04/2026 — Discovery: PayType Code Map, tblSaleItem.RefNo, Data Migration Boundary
+
+### Data migration boundary [V]
+cwserver went live **August 2020**. All data with `tblSale.Time_Stamp < 2020-08-01` is imported
+from the prior POS system (dates preserved). PayType codes in pre-2020 records may reflect the old
+system's conventions. PayTypes 3, 6, 7 first appear post-August 2020 — they are cwserver-native codes.
+PayType 8 exists in both eras (old system and cwserver both use 8 for online/PayPal orders).
+
+**Stock migration artefact (pre-Aug 2020 only):** Second-hand items from the old system were
+imported with a duplicated record — one with a new cwserver StockID and one with an 'INV'-prefixed
+stock number carrying fragmented data. Post-August 2020: 'INV' prefix in tblSaleItem.StockID is
+NOT a migration artefact — it denotes new stock received from a supplier invoice (legitimate usage).
+Note: No INV-prefixed StockIDs remain in tblSaleItem or tblTranItems as of 25/04/2026.
+
+### PayType code map — confirmed and inferred [V/R]
+PosWiz stores payment method as an integer in tblPayments.PayType. No lookup table exists in the DB.
+`tblReceiptInfo.PayCode` is the stock ORIGIN code (NEW/OS/GST etc.), NOT a payment method label.
+
+**Important:** PosWiz labels ALL online orders as "(PayPal)" in Balance Sheet PDFs regardless of
+actual gateway (PayPal, Shopify Payments, Afterpay online, Zip online). All online orders share
+PayType 8 in the DB. Disambiguation requires paypal_sales_extract.py cross-reference.
+
+| Code | Count | Status | Method | Evidence |
+|------|-------|--------|--------|----------|
+| 0 | 7,464 | [V] | Cash | Tendered column always populated; Tendered=NULL for all other types |
+| 1 | 2 | [R] | Cheque | Only 2 rows; matches "Cheque" in banking_summary_parser regex |
+| 2 | 22,990 | [V] | EFTPos/Card (all types) | Tendered=NULL; banking_summary consolidates Visa/MC/Amex → EFTPos |
+| 3 | 142 | [?] | In-store BNPL (Afterpay or Zip) | Sep 2020 – Aug 2025 only; only on sales/refunds, never loans |
+| 4 | 3 | [?] | Unknown (rare) | Dec 2020 only — 3 rows total |
+| 5 | 99 | [R] | Gift Voucher | Count matches tblVoucher (99 rows); only on sales |
+| 6 | 463 | [R] | Direct Bank Transfer / EFT | Max $11,000; appears on loans (3) and refunds (49); banking_summary "Other/Bank" |
+| 7 | 102 | [?] | In-store BNPL (Zip or Afterpay) | Mar 2022 onwards; avg $145; still active 2026 |
+| 8 | 1,710 | [V] | Online / "(PayPal)" — ALL gateways | S25J20(Shopify), S25J34(PayPal) etc. all confirmed PayType 8 |
+| 9 | 3 | [?] | Unknown (rare) | Nov 2020 – Mar 2023 only — 3 rows total |
+
+**Open:** PayType 3 vs 7 identity (Afterpay in-store vs Zip in-store) — needs user confirmation of
+which BNPL methods are accepted in-store and when each was activated.
+
+### tblSaleItem.RefNo — item provenance field [V]
+NOT a payment reference. Encodes where the sold item came from:
+- `'INV'` — new stock from supplier invoice (post-Aug 2020 usage)
+- `'B######'` (e.g. B26000027) — second-hand item bought from public; links to tblTran.RefNo where RefType='B'
+- `NULL` / empty — pre-migration imported records (StockID also often NULL for these)
+
+59,881 of 59,996 tblSaleItem rows have RefNo populated. Only 115 are NULL/empty.
+
+### PosWiz CSV field mapping → tblSale/tblSaleItem [V/R]
+From poswiz_parser.py regex (Sale Item Summary PDF format):
+| PDF field | Maps to | Table | Notes |
+|-----------|---------|-------|-------|
+| Sale # (e.g. S25K1) | SaleNo | tblSale | Primary grouping key |
+| Date (01-Nov-25) | Time_Stamp (date) | tblSale | |
+| StockID | StockID | tblSaleItem | Numeric; links to tblTranItems (s/h) or tblTranItems (new) |
+| Sell price × Qty | Amount | tblSaleItem | [R] |
+| Qty | Qty | tblSaleItem | |
+| Description | Article | tblTranItems | |
+| Cost | ItemCost | tblTranItems | [R] |
+
+Year+month encoding in RefNos: prefix letter (S/X/B/L/C) + 2-digit year + letter month (A=Jan…) + sequence.
+Older records use prefix + sequential number without month encoding (e.g. L114, L115).
 
 ---

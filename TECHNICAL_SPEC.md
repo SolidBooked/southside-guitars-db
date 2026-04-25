@@ -99,17 +99,24 @@ cwserver manages two distinct transaction workflows with separate table sets:
 ### Subsystem A: Retail Sales (PosWiz POS)
 ```
 tblSale          ← sale header (immediate sales + layby)
-tblSaleItem      ← sale line items (links to tblTranItems for s/h stock, tblArticle for new)
-tblPayments      ← payment records (RefType=S links to tblSale.SaleNo)
-tblReceiptInfo   ← receipt lines with GST breakdown (RefType=S)
+tblSaleItem      ← sale line items (RefNo='INV' = new stock; RefNo='B######' = s/h bought-in)
+tblPayments      ← payment records (RefType='S' → tblSale, 'X' → tblRefund, 'L' → tblTran[loan])
+tblReceiptInfo   ← receipt lines with GST breakdown (same RefType/RefNo as tblPayments)
 ```
 
 ### Subsystem B: Second-Hand Goods / Pawnbroker (CashNet)
 ```
-tblTran          ← pawn/consignment transaction header (police reporting)
+tblTran          ← transaction header; RefType: B=Buy(4,211), L=Loan(301), C=Consignment(21)
 tblTranItems     ← individual second-hand stock items (one row per physical item)
+tblRefund        ← refund records; RefNo uses X-prefix (e.g. X26A9); links via tblRefundItem.SaleNo
 ```
-Note: tblTran payments may flow through tblPayments via an unknown RefType (X or L).
+
+**tblPayments RefType confirmed [V]:**
+- `S` → tblSale.SaleNo (retail sales)
+- `X` → tblRefund.RefNo (refund payouts — cash/card back to customer)
+- `L` → tblTran.RefNo where tblTran.RefType='L' (loan/pawn redemption payments)
+
+**tblTran.RefType='B' (Buy) cash payouts** are NOT in tblPayments — tracked via tblCashMove ('Retail → Buys/Loans').
 
 ### Shared Infrastructure
 ```
@@ -149,19 +156,25 @@ tblWording       ← key-value system config + per-item notes
 | PayRef | nvarchar | NULL — no card auth captured |
 | VoucherNo | nvarchar | FK → tblVoucher if voucher payment |
 
-### PayType Code Map (inferred — confirm via CSV cross-reference)
-| Code | Count | Inferred Method |
-|------|-------|-----------------|
-| 0 | 7,464 | Cash [?] |
-| 1 | 2 | Cheque/EFT [?] |
-| 2 | 22,990 | EFTPOS/Card [?] |
-| 3 | 142 | Unknown [?] |
-| 4 | 3 | Unknown [?] |
-| 5 | 99 | Gift Voucher [R] |
-| 6 | 463 | Unknown [?] |
-| 7 | 102 | PayPal/Online [?] |
-| 8 | 1,710 | Afterpay/BNPL [?] |
-| 9 | 3 | Unknown [?] |
+### PayType Code Map
+No lookup table in DB. tblReceiptInfo.PayCode = stock ORIGIN code (NEW/OS/GST), NOT payment method.
+All online gateways (PayPal, Shopify, Afterpay online, Zip online) share PayType 8 — PosWiz labels
+all online orders "(PayPal)". Gateway disambiguation requires paypal_sales_extract.py output.
+
+| Code | Count | Method | Confidence |
+|------|-------|--------|-----------|
+| 0 | 7,464 | Cash | [V] Tendered always populated |
+| 1 | 2 | Cheque | [R] Only 2 rows; matches banking_summary regex |
+| 2 | 22,990 | EFTPos / Card (all types) | [V] Tendered=NULL; Visa/MC/Amex consolidated |
+| 3 | 142 | In-store BNPL (Afterpay or Zip) | [?] Sep 2020–Aug 2025 only |
+| 4 | 3 | Unknown (rare — Dec 2020 only) | [?] |
+| 5 | 99 | Gift Voucher | [R] Count matches tblVoucher |
+| 6 | 463 | Direct Bank Transfer / EFT | [R] Max $11K; on loans and refunds; maps to banking_summary "Other/Bank" |
+| 7 | 102 | In-store BNPL (Zip or Afterpay) | [?] Mar 2022 onwards; avg $145 |
+| 8 | 1,710 | Online / "(PayPal)" — ALL gateways | [V] Confirmed by cross-ref with paypal_sales_v2.csv |
+| 9 | 3 | Unknown (rare) | [?] Nov 2020–Mar 2023 |
+
+PayType 3 vs 7 identity (which is Afterpay, which is Zip) — pending user confirmation.
 
 ### tblReceiptInfo — Receipt Lines (GST pre-calculated)
 | Column | Type | Notes |
@@ -180,9 +193,35 @@ Each row = one physical second-hand item. Key fields:
 
 ## 5. Known Module Mappings
 
-_To be populated via CSV cross-reference in future sessions._
+### tblSaleItem — full column map [V]
+| Column | Type | Notes |
+|--------|------|-------|
+| SaleItemID | — | Row identifier |
+| StoreNo | int | Always 224 |
+| SaleNo | nvarchar | FK → tblSale.SaleNo |
+| RefNo | nvarchar | Item provenance: 'INV'=supplier stock, 'B######'=bought-in s/h (→tblTran) |
+| StockID | nvarchar | Numeric item ID → tblTranItems.StockID; NULL on 8,869 pre-migration rows |
+| Origin | nvarchar(3) | GST treatment → tblOrigin (NEW/OS/GST/OL/NSF etc.) |
+| Qty | float | Quantity sold |
+| Amount | float | Line total (Sell price × Qty) |
+| Comment | nvarchar | Optional note |
+| Deleted | bit | Soft-delete flag |
 
-**Target:** map `tblSale.SaleNo` + `tblSaleItem` + `tblPayments.PayType` → PosWiz CSV columns
+### PosWiz Sale Item Summary PDF → DB field mapping
+| PDF field | DB column | Table | Confidence |
+|-----------|-----------|-------|-----------|
+| Sale # (e.g. S25K1) | SaleNo | tblSale | [V] |
+| Date (01-Nov-25) | Time_Stamp (date part) | tblSale | [V] |
+| StockID | StockID | tblSaleItem | [V] |
+| Sell price | Amount ÷ Qty | tblSaleItem | [R] |
+| Qty | Qty | tblSaleItem | [V] |
+| Description | Article | tblTranItems | [R] |
+| Cost | ItemCost | tblTranItems | [R] |
+
+### Data migration boundary
+- **Pre-August 2020:** imported data from prior POS system. PayType codes may not match cwserver conventions. StockID often NULL on tblSaleItem rows from this period.
+- **Post-August 2020:** live cwserver operations. PayType 3, 6, 7 first appear here.
+- PayType 3 was active Sep 2020 – Aug 2025 (discontinued). PayType 7 active from Mar 2022 onwards.
 
 ---
 
@@ -230,3 +269,4 @@ _To be populated as issues are discovered during exploration._
 |------|--------|
 | 25/04/2026 | Initial spec created. 82 tables confirmed. Connection details verified. |
 | 25/04/2026 | Column exploration complete. Two-subsystem architecture documented. PayType map drafted. |
+| 25/04/2026 | PayType codes confirmed via Tendered column and paypal_sales_v2.csv cross-reference. RefType=X→tblRefund, RefType=L→tblTran(loan) confirmed. tblSaleItem.RefNo purpose identified. Migration boundary documented. |
