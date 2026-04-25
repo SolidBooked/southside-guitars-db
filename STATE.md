@@ -2,19 +2,19 @@
 Last updated: 25/04/2026 AEST
 
 ## Status
-Repo initialized. All core scripts created: `config.py`, `db.py`, `schema.py`.
-82 tables confirmed in CWServer via sqlcmd. Initial discovery recorded in DISCOVERIES.md.
-GitHub repo created and initial commit pushed.
+Repo initialized and pushed to GitHub: https://github.com/SolidBooked/southside-guitars-db
+Row counts run across all 82 tables. Key active tables identified and documented.
+DISCOVERIES.md and TECHNICAL_SPEC.md updated with count data.
 
 ## Next Step
-Run `python schema.py --counts CWServer` to identify the most-used tables by row volume,
-then drill into `tblTran` and `tblTranItems` columns to map against PosWiz CSV export fields.
+Run `python schema.py --columns CWServer.tblSale` and `--columns CWServer.tblSaleItem`
+to map columns against known PosWiz CSV export fields.
 
 ## Open Questions
-- [ ] Which SQL Server instance is the active one: MSSQL13 or MSSQL16? (cwserver.mdf confirmed in MSSQL13)
-- [ ] Does `tblTran` or `tblSale` serve as the primary POS transaction record?
+- [ ] `tblTran` (4,533 rows) — what transaction type does it represent? (not POS sales — too few rows)
+- [ ] `tblReceiptInfo` (57,197 rows) — is this one record per payment method per sale?
 - [ ] What date range does the live data cover?
-- [ ] Is `tblBankFeeds` populated — could it replace ANZ CSV exports?
+- [ ] `tblDodgy` (19 rows) — what triggers a record to land here?
 
 ## Connection
 ```
