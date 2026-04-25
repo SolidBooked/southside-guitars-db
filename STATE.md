@@ -2,19 +2,20 @@
 Last updated: 25/04/2026 AEST
 
 ## Status
-Repo initialized and pushed to GitHub: https://github.com/SolidBooked/southside-guitars-db
-Row counts run across all 82 tables. Key active tables identified and documented.
-DISCOVERIES.md and TECHNICAL_SPEC.md updated with count data.
+Column exploration complete for 6 priority tables: tblSale, tblSaleItem, tblTran, tblTranItems,
+tblPayments, tblReceiptInfo. Two-subsystem architecture fully documented.
+DISCOVERIES.md and TECHNICAL_SPEC.md updated with full column maps and lookup tables.
 
-## Next Step
-Run `python schema.py --columns CWServer.tblSale` and `--columns CWServer.tblSaleItem`
-to map columns against known PosWiz CSV export fields.
+## Next Step (new session)
+Load parsers.py from ssg-reconciliation to cross-reference PosWiz CSV field names against
+tblSale/tblSaleItem columns. Confirm PayType integer → payment method mapping.
 
 ## Open Questions
-- [ ] `tblTran` (4,533 rows) — what transaction type does it represent? (not POS sales — too few rows)
-- [ ] `tblReceiptInfo` (57,197 rows) — is this one record per payment method per sale?
-- [ ] What date range does the live data cover?
-- [ ] `tblDodgy` (19 rows) — what triggers a record to land here?
+- [ ] `RefType = X` (1,068 payments, 1,299 receipts) — what transaction type?
+- [ ] `RefType = L` (238/236) — Layby separate from tblSale.Settled=0? Or Loan (tblTran)?
+- [ ] PayType 0,2,3,4,6,7,8,9 exact identities — needs PosWiz CSV cross-reference [?]
+- [ ] `tblDodgy` (19 rows) — what triggers a record here?
+- [ ] `tblSaleItem.RefNo` — different from SaleNo, unknown purpose
 
 ## Connection
 ```

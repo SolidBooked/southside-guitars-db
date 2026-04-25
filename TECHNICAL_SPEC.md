@@ -92,30 +92,97 @@ Total: 82 base tables (as of 25/04/2026). All in `dbo` schema.
 
 ---
 
-## 3. Key Table Specifications
+## 3. Architecture — Two Transaction Subsystems
 
-_To be populated as columns are explored._
+cwserver manages two distinct transaction workflows with separate table sets:
 
-### tblTran
-_Primary POS transaction table — TBD_
+### Subsystem A: Retail Sales (PosWiz POS)
+```
+tblSale          ← sale header (immediate sales + layby)
+tblSaleItem      ← sale line items (links to tblTranItems for s/h stock, tblArticle for new)
+tblPayments      ← payment records (RefType=S links to tblSale.SaleNo)
+tblReceiptInfo   ← receipt lines with GST breakdown (RefType=S)
+```
 
-### tblTranItems
-_Transaction line items — TBD_
+### Subsystem B: Second-Hand Goods / Pawnbroker (CashNet)
+```
+tblTran          ← pawn/consignment transaction header (police reporting)
+tblTranItems     ← individual second-hand stock items (one row per physical item)
+```
+Note: tblTran payments may flow through tblPayments via an unknown RefType (X or L).
 
-### tblSale
-_TBD — relationship to tblTran unclear until columns examined_
+### Shared Infrastructure
+```
+tblCustSupp      ← customer and supplier master
+tblArticle       ← new product catalog (7,060 products)
+tblCashMove      ← daily cash movements (till ↔ bank ↔ safe ↔ buys/loans)
+tblRepairs       ← guitar repair jobs
+tblVoucher       ← gift vouchers
+tblWording       ← key-value system config + per-item notes
+```
 
-### tblPayments
-_Payment records — TBD_
+## 4. Key Table Columns
 
-### tblBankFeeds
-_Bank feed data — TBD — unknown if populated_
+### tblSale — POS Sales Header
+| Column | Type | Notes |
+|--------|------|-------|
+| SaleNo | nvarchar(10) | Primary sale identifier |
+| NameID | bigint | Customer FK → tblCustSupp |
+| Amount | float | Total sale value |
+| Paid | float | Amount paid to date |
+| Settled | bit | 1=complete, 0=layby outstanding |
+| SettleDate | datetime | When fully paid |
+| Term/TermUnit | int/nvarchar | Layby terms |
+| NextPayDate | datetime | Next layby instalment |
+| PlacedBy | nvarchar(6) | Staff PIN |
+| Time_Stamp | datetime | Created datetime |
+| StoreNo | int | Always 224 (Southside Guitars) |
 
----
+### tblPayments — Payment Records
+| Column | Type | Notes |
+|--------|------|-------|
+| ReceiptNo | nvarchar(9) | FK → tblReceiptInfo |
+| RefType + RefNo | nvarchar | S+SaleNo links to tblSale |
+| PayType | int | Payment method (see lookup below) |
+| Amount | float | Payment amount |
+| Tendered | float | Cash tendered |
+| PayRef | nvarchar | NULL — no card auth captured |
+| VoucherNo | nvarchar | FK → tblVoucher if voucher payment |
 
-## 4. Known Module Mappings
+### PayType Code Map (inferred — confirm via CSV cross-reference)
+| Code | Count | Inferred Method |
+|------|-------|-----------------|
+| 0 | 7,464 | Cash [?] |
+| 1 | 2 | Cheque/EFT [?] |
+| 2 | 22,990 | EFTPOS/Card [?] |
+| 3 | 142 | Unknown [?] |
+| 4 | 3 | Unknown [?] |
+| 5 | 99 | Gift Voucher [R] |
+| 6 | 463 | Unknown [?] |
+| 7 | 102 | PayPal/Online [?] |
+| 8 | 1,710 | Afterpay/BNPL [?] |
+| 9 | 3 | Unknown [?] |
 
-_To be populated as queries are developed. Goal: map cwserver fields → PosWiz CSV columns → Cashnet CSV columns._
+### tblReceiptInfo — Receipt Lines (GST pre-calculated)
+| Column | Type | Notes |
+|--------|------|-------|
+| ReceiptNo | nvarchar(9) | Receipt identifier |
+| RefType + RefNo | nvarchar | Links to tblSale or tblTran |
+| GSTAmount | float | Pre-calculated GST per line ← tax reconciliation |
+| RecTotalAmount | float | Receipt total |
+| Principle / Interest / FeesCharges | float | Layby/loan payment breakdown |
+
+### tblTranItems — Second-Hand Stock Items
+Each row = one physical second-hand item. Key fields:
+`RefNo` (→tblTran), `StockID`, `Article`, `MakeArtist`, `ModelTitle`, `SerialNo`,
+`Barcode`, `InStock`, `OnShelf`, `Qty`, `QtySold`, `PriceSold`, `SellerID`,
+`Origin` (GST), `RRPrice1-5` (price tiers), `ShowOnWeb`, `PoliceDataSent`, `ItemCost`
+
+## 5. Known Module Mappings
+
+_To be populated via CSV cross-reference in future sessions._
+
+**Target:** map `tblSale.SaleNo` + `tblSaleItem` + `tblPayments.PayType` → PosWiz CSV columns
 
 ---
 
@@ -144,8 +211,22 @@ _To be populated as issues are discovered during exploration._
 
 ---
 
-## 7. Changelog
+## 7. System Details
+
+| Detail | Value |
+|--------|-------|
+| Store number | 224 |
+| Server | SALISBURYSERVER (`192.168.1.99`) |
+| Client machines | `192.168.68.x` subnet |
+| Police reporting | Second Hand Dealers Act (QLD) — files to `c:\policefiles` |
+| Last police send | 14/03/2026 |
+| Backup destination | OneDrive: `C:\Users\Southside Guitars\OneDrive\CWSever` |
+| System vendor | ComWiz / ProCreate HQ |
+| Data history | 2013-10-23 to present |
+
+## 8. Changelog
 
 | Date | Change |
 |------|--------|
 | 25/04/2026 | Initial spec created. 82 tables confirmed. Connection details verified. |
+| 25/04/2026 | Column exploration complete. Two-subsystem architecture documented. PayType map drafted. |
