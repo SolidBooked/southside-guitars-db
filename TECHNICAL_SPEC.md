@@ -160,21 +160,24 @@ tblWording       ← key-value system config + per-item notes
 No lookup table in DB. tblReceiptInfo.PayCode = stock ORIGIN code (NEW/OS/GST), NOT payment method.
 All online gateways (PayPal, Shopify, Afterpay online, Zip online) share PayType 8 — PosWiz labels
 all online orders "(PayPal)". Gateway disambiguation requires paypal_sales_extract.py output.
+Q2 FY26 gateway breakdown: Shopify Payments 142, PayPal 60, Afterpay 33, ZipPay 3.
+
+**ANZ bank settlement by PayType:**
+PayType 2+3 → First Data (FDSMA) daily batch. PayType 5+7 → no ANZ movement (Xero account 808).
+PayType 6 → direct EFT. PayType 8 → four separate ANZ streams (PayPal/Shopify/Afterpay/Zip).
 
 | Code | Count | Method | Confidence |
 |------|-------|--------|-----------|
 | 0 | 7,464 | Cash | [V] Tendered always populated |
 | 1 | 2 | Cheque | [R] Only 2 rows; matches banking_summary regex |
-| 2 | 22,990 | EFTPos / Card (all types) | [V] Tendered=NULL; Visa/MC/Amex consolidated |
-| 3 | 142 | In-store BNPL (Afterpay or Zip) | [?] Sep 2020–Aug 2025 only |
+| 2 | 22,990 | EFTPos / Card (all brands — integrated) | [V] All card types settle via First Data (FDSMA) |
+| 3 | 142 | AMEX button (PosWiz staff error) | [V] Untrained staff; settles in same First Data batch as PayType 2; treat as PayType 2 for recon |
 | 4 | 3 | Unknown (rare — Dec 2020 only) | [?] |
-| 5 | 99 | Gift Voucher | [R] Count matches tblVoucher |
+| 5 | 99 | Credit note / gift voucher (pre-Jul 2021) | [V] No bank movement; Xero account 808 |
 | 6 | 463 | Direct Bank Transfer / EFT | [R] Max $11K; on loans and refunds; maps to banking_summary "Other/Bank" |
-| 7 | 102 | In-store BNPL (Zip or Afterpay) | [?] Mar 2022 onwards; avg $145 |
+| 7 | 102 | Credit note / gift voucher (Mar 2022–present) | [V] Same function as PayType 5; staff turnover artefact; no bank movement; Xero account 808 |
 | 8 | 1,710 | Online / "(PayPal)" — ALL gateways | [V] Confirmed by cross-ref with paypal_sales_v2.csv |
 | 9 | 3 | Unknown (rare) | [?] Nov 2020–Mar 2023 |
-
-PayType 3 vs 7 identity (which is Afterpay, which is Zip) — pending user confirmation.
 
 ### tblReceiptInfo — Receipt Lines (GST pre-calculated)
 | Column | Type | Notes |
@@ -219,9 +222,10 @@ Each row = one physical second-hand item. Key fields:
 | Cost | ItemCost | tblTranItems | [R] |
 
 ### Data migration boundary
-- **Pre-August 2020:** imported data from prior POS system. PayType codes may not match cwserver conventions. StockID often NULL on tblSaleItem rows from this period.
-- **Post-August 2020:** live cwserver operations. PayType 3, 6, 7 first appear here.
-- PayType 3 was active Sep 2020 – Aug 2025 (discontinued). PayType 7 active from Mar 2022 onwards.
+- **Prior system:** PawnIt (2013–Jul/Aug 2020). Data migrated into CWServer at cutover.
+- **Pre-August 2020 records:** imported from PawnIt; dates preserved. PayType codes may reflect PawnIt conventions. StockID often NULL on tblSaleItem rows from this period (migration artefact).
+- **Post-August 2020:** live CWServer/PosWiz/CashNet (ProCreate vendor) operations. PayType 3, 6, 7 first appear here.
+- PayType 3 active Sep 2020 – Aug 2025 (staff gradually stopped using wrong button). PayType 7 active from Mar 2022 onwards.
 
 ---
 
@@ -270,3 +274,4 @@ _To be populated as issues are discovered during exploration._
 | 25/04/2026 | Initial spec created. 82 tables confirmed. Connection details verified. |
 | 25/04/2026 | Column exploration complete. Two-subsystem architecture documented. PayType map drafted. |
 | 25/04/2026 | PayType codes confirmed via Tendered column and paypal_sales_v2.csv cross-reference. RefType=X→tblRefund, RefType=L→tblTran(loan) confirmed. tblSaleItem.RefNo purpose identified. Migration boundary documented. |
+| 26/04/2026 | PayType 3=AMEX (V), PayType 5+7=credit note/gift voucher (V) confirmed via PosWiz lookup. Prior system PawnIt (2013–2020) documented. ANZ bank settlement mapping per PayType added. SSG reconciliation cross-reference completed. |
