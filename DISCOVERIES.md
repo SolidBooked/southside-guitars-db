@@ -310,3 +310,49 @@ Year+month encoding in RefNos: prefix letter (S/X/B/L/C) + 2-digit year + letter
 Older records use prefix + sequential number without month encoding (e.g. L114, L115).
 
 ---
+
+## 26/04/2026 — Discovery: PayType Map Fully Resolved + tblDodgy + Pre-2020 Stock Artefact (Session 4)
+
+### Correction: PayType 5 was NOT credit note/gift voucher
+
+PayType 5 was recorded as [V] credit note/gift voucher in Session 3. That was an **inference** from the PayType 7 verification (sale S26C249 PosWiz lookup) — not a direct verification of any PayType 5 record. Incorrect confidence tag was applied.
+
+**Corrected via PosWiz UI (store owner confirmed):** PosWiz payment buttons are sequential, 0-indexed from the top (position 1 = Cash = PayType 0). PayType 5 = MasterCard button. PayType 4 = VISA button. Both were separate card-brand buttons prior to EFTPOS integration. First Data (FDSMA) integrated provider consolidated all card brands under PayType 2 from mid-2021 — PayType 4 and 5 stopped being used at that point. [V]
+
+### Fully resolved PayType code map — all codes [V]
+
+| Code | Count | Method | Notes |
+|------|-------|--------|-------|
+| 0 | 7,464 | Cash | Tendered always populated |
+| 1 | 2 | Cheque | Legacy button; almost never used |
+| 2 | 22,990 | EFTPOS / Card (all brands — integrated) | All card types settle via First Data (FDSMA) since mid-2021 |
+| 3 | 142 | AMEX button (PosWiz UI artefact) | Settles in same First Data batch as PayType 2; treat as PayType 2 for reconciliation |
+| 4 | 3 | VISA (pre-integration only) | Dec 2020 only; consolidated under PayType 2 from mid-2021 |
+| 5 | 99 | MasterCard (pre-integration only) | Pre-Jul 2021; consolidated under PayType 2 from mid-2021; settles via First Data same as PayType 2+3 |
+| 6 | 463 | Direct bank transfer / EFT | Max $11K; on loans and refunds |
+| 7 | 102 | Credit note / gift voucher | Mar 2022–present; no bank movement; Xero account 808 |
+| 8 | 1,710 | Online / "(PayPal)" — ALL gateways | PayPal + Shopify Payments + Afterpay + ZipPay via single "PayPal" PosWiz button |
+| 9 | 3 | Other credit card | 3 rows total |
+
+**EFTPOS integration timeline:** Pre-mid-2021, VISA (PayType 4), MasterCard (PayType 5), and AMEX (PayType 3) each had a dedicated PosWiz button. After First Data (FDSMA) integration, all card brands consolidated under PayType 2. PayType 4 and 5 went dormant; PayType 3 (AMEX) persisted due to staff habit but routes through the same settlement batch.
+
+**Corrected ANZ bank settlement mapping:**
+- PayType 0 (Cash) → Cash on Hand; no ANZ line
+- PayType 2+3 → First Data (FDSMA) daily EFTPOS batch (PayType 4+5 also routed here pre-mid-2021 — historical only)
+- PayType 6 (Bank Transfer) → direct ANZ EFT
+- PayType 7 (Credit note/Voucher) → NO bank movement; Xero account 808 (CURRLIAB); manual journal only
+- PayType 8 (Online) → four ANZ streams: TRANSFER FROM PAYPAL / SHOPIFY / AFTERPAY / ZIPMONEY
+
+### tblDodgy — inter-store customer watchlist [V]
+
+19 rows. ProCreate network feature originally designed for flagging customers across stores in the same network. SSG uses it loosely — some genuine alerts (e.g. stolen goods), most are general customer notes. Links to `tblCustSupp.NameID` via WarnText field. Has interstore columns (bit + InterstoreAmmend + InterstoreID) confirming cross-store sync design. **NOT transaction anomaly data. No reconciliation query impact.**
+
+### Pre-2020 StockID=NULL — PawnIt migration artefact confirmed [V]
+
+PawnIt→CWServer migration (Aug 2020) duplicated ~11,000 second-hand stock items into ~22,000 records. Each original item produced two rows:
+- **Numerical StockID** — correct CWServer second-hand record
+- **INV-prefix StockID** — incorrectly typed as new supplier stock (no QLD Second Hand Dealers Act tracking obligation)
+
+The INV-prefix duplication explains StockID=NULL and orphaned rows in tblSaleItem for pre-Aug 2020 data. Post-Aug 2020: INV prefix in tblSaleItem.StockID is legitimate (new stock from supplier invoice, not a migration artefact).
+
+---
