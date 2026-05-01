@@ -37,6 +37,7 @@ Session 5 complete. PayType repurposing live (01/05/2026). q2_extract.py built a
 - PayType 8 = all online (confirmed via paypal_sales_v2.csv cross-reference) [V]
 - RefType='X' → tblRefund.RefNo [V]; RefType='L' → tblTran.RefNo [V]
 - tblSaleItem.RefNo = item provenance: 'INV'=supplier stock, 'B######'=bought-in s/h [V]
+- StockID 24554 = repeatable placeholder used exclusively to record gift voucher (PayType 7 / Xero account 808) line items in tblSaleItem [V] — the only viable mechanism found to capture payment type at transaction time; causes a double-up in item counts which is acknowledged and handled in SSG reconciliation scripts (exclude StockID 24554 from sales item analysis)
 - Data migration boundary = August 2020 [V]
 - tblDDRPayMethods = CashNet loan repayment bitmask codes only — NOT POS PayTypes [V]
 - No PayType lookup table in DB — codes hardcoded in PosWiz application [V]
@@ -75,20 +76,49 @@ Note: PayType 8 pre-cutoff contained ALL online gateways (PayPal + Shopify + Aft
 
 ### q2_extract.py [V — 01/05/2026]
 Q2 FY26 (Oct–Dec 2025) extraction covering both PosWiz and CashNet subsystems.
-Output: `Q2_FY26_Extract.xlsx` (5 sheets)
+Output: `Q2_FY26_Extract.xlsx` (10 sheets)
 - **PosWiz_Payments** — 1,463 rows; tblPayments + tblSale join; PayType label + EFTPOS pool flag
 - **PosWiz_GST** — 1,404 rows; tblReceiptInfo GST per sale
 - **PosWiz_Daily** — daily summary by PayType + EFTPOS pool total + GST
+- **PosWiz_SaleItems** — 2,719 rows; tblSaleItem + account code (200/201/808); 2,712 @ 200 ($245k), 7 @ 808 ($915)
+- **PosWiz_AccountDaily** — daily totals by Xero account code (200/201/808)
+- **Online_Orders** — 238 PayType 8 rows with resolved gateway (Shopify 142/$44k, PayPal 60/$13k, Afterpay 33/$10k, Zip 3/$1.8k); joined from paypal_sales_v2.csv
+- **Online_Daily** — daily gateway breakdown
+- **EFTPOS_Recon** — PosWiz daily EFTPOS totals vs 64 First Data ANZ deposits ($111,904); 52 matched, 7 splits, 36 unmatched (boundary/holiday edge cases)
 - **CashNet_Buys** — 82 rows; tblTran (RefType=B, Amount>0); payment method classified via 3-pass tblCashMove match
 - **CashNet_Daily** — daily Cash / Bank Transfer / total / buy count
 
 Validated totals: CashNet $39,712.00 [V] (exact match to cashnet_parser Q2 figure).
 Pass 3 Cash defaults: 4 buys (no CM record found — expected, cashnet memory noted ~3).
 
+## tblSaleItem Account Code Classification [V — 01/05/2026]
+
+RefNo prefix meaning (confirmed by store owner):
+- `B######` = Buys (second-hand bought-in) — GST applies
+- `L######` = Loans (pawn loans) — seized/forfeited items are GST-exempt (financial transaction)
+- `C######` = Consignment — GST applies
+- `INV`     = Supplier stock — GST applies
+- `OS-*`    = Other Stock (ad-hoc, no stock record) — GST applies
+- `S######` = Sale reference (not a stock origin)
+
+Origin field values (tblSaleItem):
+- `GST` = supplier/bought-in stock with GST set
+- `NULL` = second-hand bought-in (B-prefix), GST still applies
+- `OS`  = Other Stock (ad-hoc unlisted items)
+- `GFS` = Gift voucher placeholder (always StockID 24554)
+
+**Account code classification rule (applied per tblSaleItem row):**
+1. `Origin = 'GFS'` OR `StockID = 24554` → **808** (gift voucher)
+2. `RefNo LIKE 'L%'` → **201** (seized pawn item, GST-exempt) — rare
+3. All other rows → **200** (GST sales)
+
+Note: StockID 24554 rows (account 808) are the gift voucher double-up placeholder — exclude from 200/201 totals in any item-level analysis.
+
 ## Next Steps
-- Add tblSaleItem join to classify sales into Xero account codes (200/201/808)
-- EFTPOS reconciliation feed (PayType 2+3 daily totals → First Data settlement cross-ref)
-- Online orders extract (PayType 8 → gateway CSV cross-reference)
+All three planned extraction tasks complete as of 01/05/2026:
+- ~~Add tblSaleItem join → Xero account codes (200/201/808)~~ [V]
+- ~~EFTPOS reconciliation feed~~ [V]
+- ~~Online orders extract (PayType 8 → gateway CSV)~~ [V]
 
 ## Connection
 ```
