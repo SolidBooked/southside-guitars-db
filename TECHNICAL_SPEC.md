@@ -171,15 +171,15 @@ PayType 6 → direct EFT. PayType 8 → four separate ANZ streams (PayPal/Shopif
 | 0 | 7,464 | Cash | [V] Tendered always populated |
 | 1 | 2 | Cheque | [V] Legacy button; almost never used — **[planned repurposing 01/05/2026]** |
 | 2 | 22,990 | EFTPos / Card (all brands — integrated) | [V] All card types settle via First Data (FDSMA) |
-| 3 | 142 | AMEX button (PosWiz staff error) | [V] Untrained staff; settles in same First Data batch as PayType 2; treat as PayType 2 for recon |
-| 4 | 3 | VISA (pre-integration, Dec 2020 only) | [V] Card brands consolidated under PayType 2 from mid-2021 — **[planned repurposing 01/05/2026]** |
+| 3 | 142 | AMEX button (staff error); **from 01/05/2026: Afterpay** | [V] Oct 2023: merchant services change; AMEX integrated into First Data. Post-Oct 2023 rows = staff miskeys. Last miskey: Aug 2025 (S25H267, $76) |
+| 4 | 3 | VISA (pre-integration, Dec 2020 only); **from 01/05/2026: ZipPay** | [V] Card brands consolidated under PayType 2 from mid-2021 |
 | 5 | 99 | MasterCard (pre-integration, pre-Jul 2021) | [V] Card brands consolidated under PayType 2 from mid-2021; settles via First Data same as PayType 2+3 — **[planned repurposing 01/05/2026]** |
 | 6 | 463 | Direct Bank Transfer / EFT | [V] Max $11K; on loans and refunds; maps to banking_summary "Other/Bank" |
 | 7 | 102 | Credit note / gift voucher (Mar 2022–present) | [V] Confirmed via sale S26C249 PosWiz lookup; no bank movement; Xero account 808 |
-| 8 | 1,710 | Online / "(PayPal)" — ALL gateways | [V] Confirmed by cross-ref with paypal_sales_v2.csv |
-| 9 | 3 | Other credit card | [V] 3 rows total — **[planned repurposing 01/05/2026]** |
+| 8 | 1,710 | Online — pre-01/05/2026: ALL gateways via "PayPal" button; **from 01/05/2026: PayPal only** | [V] Confirmed by cross-ref with paypal_sales_v2.csv |
+| 9 | 3 | Other credit card; **from 01/05/2026: Shopify Payments** | [V] 3 rows total |
 
-> **⚠ Planned repurposing — 01/05/2026 (proposed):** PayType codes 1, 4, 5, 9 (all currently dormant) are planned for reassignment to BNPL/ecommerce gateways to provide per-gateway granularity within online orders (currently all collapsed under PayType 8). Gateway-to-code assignments TBD. **Reconciliation scripts must apply a date cutoff on these codes:** rows before 01/05/2026 carry the old card-brand meaning (minimal historical rows); rows from 01/05/2026 onwards carry the new gateway meaning. Update this note with confirmed assignments once live.
+> **✓ Repurposing LIVE — 01/05/2026:** PayType 3→Afterpay, 4→ZipPay, 8→PayPal only (was all-online), 9→Shopify Payments. Codes 1 and 5 dormant. **Date cutoff:** `Time_Stamp < 2026-05-01` = old meaning; `>= 2026-05-01` = new gateway. Post-cutoff online totals must union PayType 3/4/8/9. Gateway CSVs are primary source-of-truth; DB codes are secondary.
 
 ### tblReceiptInfo — Receipt Lines (GST pre-calculated)
 | Column | Type | Notes |
@@ -279,3 +279,4 @@ _To be populated as issues are discovered during exploration._
 | 26/04/2026 | PayType 3=AMEX (V), PayType 7=credit note/gift voucher (V) confirmed via PosWiz lookup. Prior system PawnIt (2013–2020) documented. ANZ bank settlement mapping per PayType added. SSG reconciliation cross-reference completed. |
 | 26/04/2026 | Session 4: PayType map fully corrected — 1=Cheque[V], 4=VISA[V], 5=MasterCard[V] (corrected from credit note/voucher — prior inference error), 6=[R]→[V], 9=Other credit card[V]. tblDodgy=inter-store customer watchlist. Pre-2020 StockID=NULL=PawnIt migration artefact confirmed. |
 | 26/04/2026 | Planned: PayType codes 1/4/5/9 to be repurposed for BNPL/ecomm gateway granularity from 01/05/2026. Gateway assignments TBD. Dual-semantics date cutoff documented. |
+| 01/05/2026 | PayType repurposing live: 3→Afterpay, 4→ZipPay, 8→PayPal only, 9→Shopify Payments. PayType 3 history clarified (Oct 2023 merchant services change). q2_extract.py built and validated ($39,712 CashNet match). Account code classification (tblSaleItem join) in progress. |

@@ -356,3 +356,24 @@ PawnIt→CWServer migration (Aug 2020) duplicated ~11,000 second-hand stock item
 The INV-prefix duplication explains StockID=NULL and orphaned rows in tblSaleItem for pre-Aug 2020 data. Post-Aug 2020: INV prefix in tblSaleItem.StockID is legitimate (new stock from supplier invoice, not a migration artefact).
 
 ---
+
+## 01/05/2026 - PayType Repurposing Live + q2_extract.py Validated
+
+### Gateway assignments confirmed [V]
+| Code | Post-01/05/2026 | Pre-cutoff |
+|------|-----------------|------------|
+| 3 | Afterpay | AMEX button (staff error) |
+| 4 | ZipPay | VISA (3 rows, Dec 2020) |
+| 8 | PayPal only | All online gateways |
+| 9 | Shopify Payments | Other credit card |
+
+Codes 1, 5 remain dormant. Date cutoff: `Time_Stamp < 2026-05-01` = old; `>= 2026-05-01` = new gateway. Post-cutoff online totals union codes 3/4/8/9.
+
+**PayType 3 [V]:** Oct 2023 = merchant services change; AMEX integrated into First Data batch. Post-Oct 2023 rows = staff miskeys. Last: Aug 2025 (S25H267, $76).
+
+**CSV source-of-truth:** Gateway CSVs primary for online classification; DB PayType codes secondary.
+
+### q2_extract.py [V]
+Oct-Dec 2025 DB extraction -> Q2_FY26_Extract.xlsx (5 sheets). CashNet total $39,712.00 matches cashnet_parser Q2 figure exactly.
+
+---
