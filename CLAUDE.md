@@ -1,5 +1,9 @@
 # Southside Guitars DB — Database & Extract Pipeline
 
+## Before Starting Work
+
+CANARY-GLOBAL: Oh Captain!
+
 ## File Placement Rules
 
 STRICT — These are hard constraints, not suggestions:
