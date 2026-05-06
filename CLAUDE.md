@@ -3,6 +3,7 @@
 ## Before Starting Work
 
 CANARY-GLOBAL: Oh Captain!
+CANARY-PHASE: My Captain!
 
 ## File Placement Rules
 
